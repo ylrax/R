@@ -1,0 +1,195 @@
+---
+title: "R Recap Session - IE Big Data Club"
+author: "Felix Mueller"
+date: "2/15/2017"
+output:
+  beamer_presentation:
+    toc: true
+    fig_caption: false
+    slide_level: 1
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# R Sessions 
+<div class="blue">
+- How to apply models in general
+- Troubleshooting
+- Preparation
+- simple data transformations
+- Data wrangling with dplyr
+- Functions
+- Split your data
+- Apply simple model
+- Q & A
+- Plan for the future
+</div>
+# How to apply models in general
+<div class="blue">
+- Understanding the problem
+- Understanding the data
+- Preparing the data
+- Split in Train & Test
+- Model 
+- Tuning of the model
+- Evaluation
+</div>
+# Troubleshooting
+<div class="blue">
+- ask  R: ?function_i_want_to_apply
+- ask R: args(function_i_want_to_apply)
+- Google: "R Error message"
+- Stackoverflow
+- Cheat Sheets
+- Kaggle
+- Starting point: first error in script
+- Error might occur much later than the reason for it
+</div>
+# Before you start
+![](~/Google Drive/IE/Big Data Club/R_Sessions/session_01/set_working_dir.png)
+
+# Preparation {.smaller}
+<div class="blue">
+```{r Preparations, echo = T, warning =FALSE,message = F}
+library(dplyr)
+library(ggplot2)
+setwd("~/Google Drive/IE/Big Data Club/R_Sessions/session_01")
+df <- read.csv2("titanic.csv")
+print(str(df))
+```
+</div>
+# Simple data transformations - transform data type {.smaller}
+<div class="blue">
+```{r, echo = T, warning =FALSE,message = F}
+print(class(df$survived))
+print(class(df$fare))
+df <- as.data.frame(df)
+df$survived <- as.factor(df$survived)
+df$fare <- as.integer(df$fare)
+print(class(df$survived))
+print(class(df$fare))
+```
+</div>
+# Simple data transformations - filter {.smaller}
+<div class="blue">
+```{r, echo = T, warning =FALSE,message = F}
+print(any(is.na(df$sex)))
+print(any(df$sex == ""))
+print(dim(df))
+#dplyr notation
+df <- df %>% filter(!is.na(sex))
+df <- df %>% filter(sex != "")
+print(dim(df))
+```
+</div>
+# Simple data transformations - change values {.smaller}
+<div class="blue">
+```{r, echo = T, warning =FALSE,message = F}
+print(df$age[1:10])
+df <- df %>% mutate(age = if_else(age < 1.0,0.0,age))
+df$age <- as.integer(df$age)
+print(df$age[1:10])
+print(class(df$age))
+```
+</div>
+# Simple data transformations - select columns {.smaller}
+<div class="blue">
+```{r, echo = T, warning =FALSE,message = F}
+names(df)
+df_small <- df %>% select(pclass,survived,sex)
+#the same
+df_small2 <- df %>% select(pclass:sex)
+#the same
+df_small3 <- df %>% select(pclass:age,-age)
+#the same
+df_small4 <- df %>% select(one_of("pclass","survived","sex"))
+print(names(df_small))
+```
+</div>
+# Functions - in general {.smaller}
+<div class="blue">
+```{r, echo = T, warning =FALSE,message = F}
+fun <- function (parameter1, parameter2 = 'default'){
+  print(paste("parameter 1 is:",parameter1))
+  return_value <- parameter1 + parameter2
+  return(return_value)
+  #the same: list(return_value,return_value2,return_valueX)
+}
+value = fun(2,3)
+print(paste("The returned value is: ",value))
+```
+</div>
+# Functions - example: Split data {.smaller}
+<div class="blue">
+```{r, echo = T, warning =FALSE,message = F}
+splitdf <- function(dataframe, seed=NULL, percentage=0.8) {
+  if (!is.null(seed)) set.seed(seed)
+  index <- 1:nrow(dataframe)
+  numTrainingSamples <- round(length(index) * percentage)
+  trainindex <- sample(index, numTrainingSamples)
+  trainset <- dataframe[trainindex, ]
+  testset <- dataframe[-trainindex, ]
+  list(trainset=trainset,testset=testset)
+}
+split <- splitdf(df)
+train <- split$trainset
+test <- split$testset
+print(paste("nrow of df: ",nrow(df)))
+print(paste("nrow of train",nrow(train),"; nrow of test",nrow(test)))
+```
+</div>
+# Apply simple model - error fixing {.smaller}
+<div class="blue">
+![](~/Google Drive/IE/Big Data Club/R_Sessions/session_01/tree_error.png)
+</div>
+# Apply simple model {.smaller}
+<div class="blue">
+```{r, echo = T, warning =FALSE,message = F}
+#install.packages("tree") --> if not installed
+library(tree)
+#random seed
+set.seed(27)
+df$ticket <- as.integer(df$ticket)
+df$cabin <- as.integer(df$cabin)
+split <- splitdf(df)
+train <- split$trainset
+test <- split$testset
+decision_tree <- tree(survived ~.,data=train)
+prediction <- predict(decision_tree,newdata=test)
+print(head(prediction))
+```
+</div>
+# Apply simple model - predict {.smaller}
+<div class="blue">
+```{r, echo = T, warning =FALSE,message = F}
+#random seed
+set.seed(27)
+prediction <- predict(decision_tree,newdata=test)
+threshold = 0.5
+prediction_class <- if_else(prediction[,2]>threshold,1,0)
+tbl <- table(prediction[,2]>threshold,test$survived)
+print(tbl)
+print(paste("The accuracy of our model is:",(tbl[1,1]+tbl[2,2])/(sum(tbl))))
+```
+</div>
+# Tuning by ROC {.smaller}
+<div class="blue">
+```{r, echo = T, warning =FALSE,message = F}
+#install.packages("pROC") --> if not installed yet
+library(pROC)
+#random seed
+set.seed(27)
+prediction <- predict(decision_tree,newdata=test)
+predictions_df <- data.frame(survived=test$survived, prediction=prediction[,2])
+myROC <- roc(survived ~ prediction, predictions_df)
+#choose the best threshold
+threshold <- coords(myROC, "best", ret = "threshold")
+prediction_class <- if_else(prediction[,2]>threshold,1,0)
+tbl <- table(prediction[,2]>threshold,test$survived)
+print(tbl)
+#interestingly, the accuracy decreases but the predictions are more even
+print(paste("The accuracy of our model is:",(tbl[1,1]+tbl[2,2])/(sum(tbl))))
+```
+</div>

@@ -152,7 +152,8 @@ logReg <- function(train,cv,test,seed=1){
   #diffusion Table
   tbl <- table(predictions$target, predictions$pred > threshold)
   #print(coef(model))
-  return(tbl)
+  auc = auc(predictions$target, predictions$pred)
+  return(list(tbl=tbl,auc=auc,threshold=threshold))
 }
 
 randf <- function(train,cv,test,seed=1){
@@ -169,7 +170,8 @@ randf <- function(train,cv,test,seed=1){
   predictions <- data.frame(target=test$target, pred=probs[,2])
   #diffusion Table
   tbl <- table(predictions$target, predictions$pred > threshold)
-  return(tbl)
+  auc = auc(predictions$target, predictions$pred)
+  return(list(tbl=tbl,auc=auc,threshold=threshold))
 }
 
 supVM <- function(train,cv,test,seed=1){
@@ -198,14 +200,16 @@ create_model <- function(seed=1,applyRF=F,applySVM=F){
   cv = splits$trainset
   tst = splits$testset
   if(applyRF==T){
-    tbl = randf(trn,cv,tst,seed=seed)
+    li = randf(trn,cv,tst,seed=seed)
+    tbl = li$tbl
   }
   else if(applySVM==T){
     li = supVM(trn,cv,tst,seed=seed)
     tbl = li$tbl
   }
   else{
-    tbl = logReg(trn,cv,tst,seed=seed)
+    li = logReg(trn,cv,tst,seed=seed)
+    tbl = li$tbl
   }
   print(tbl)
   #let's calculate the evaluation measures
@@ -231,7 +235,7 @@ auc = vector()
 
 sequence <- seq(1,10)
 for (i in sequence){
-  tmp = create_model(seed=i,applySVM=T,applyRF = F)
+  tmp = create_model(seed=i,applySVM=F,applyRF = T)
   accuracy[i] <- tmp[[1]]
   f1_measure[i] <- tmp[[2]]
   auc[i] <- tmp[[3]]
@@ -254,7 +258,7 @@ q2 = qplot(y=f1_measure,x=sequence,xlab="Iteration",ylab="F1 Measure",main="F1 M
   geom_line(colour=I("blue"))+
   geom_point(aes(x = which(f1_measure==max(f1_measure)), y = max(f1_measure)), color = I("red"))+
   geom_hline(aes(yintercept=max(f1_measure)),color = I("red"),linetype = 2)
-q3 = qplot(y=auc,x=sequence,xlab="Iteration",ylab="F1 Measure",main="F1 Measure per iteration")+
+q3 = qplot(y=auc,x=sequence,xlab="Iteration",ylab="AUC",main="AUC per iteration")+
   geom_line(colour=I("blue"))+
   geom_point(aes(x = which(auc==max(auc)), y = max(auc)), color = I("red"))+
   geom_hline(aes(yintercept=max(auc)),color = I("red"),linetype = 2)
@@ -269,6 +273,8 @@ cat(paste("The seed I should set to obtain the optimal model:", which(accuracy =
 #Highest Accuracy: 0.86545561955398 , Lowest Accuracy: 0.18150937823069 , Average Accuracy: 0.653300841825432
 #Highest F1: 0.927102504601104 , Lowest F1: 0.202360391479562 , Average F1: 0.744306569550274
 #SVM seed = 11:20 is not better
+#Random Forest has much better AUC --> ~0.65
+# LogReg even better: --> ~0.68; also, very constant for all measures
 ```
 Interestingly, the obtained F1 scores and accuracies are very similar for the values optimized by the ROC and by the MCC. This might be due to a quite balanced dataset with proportions of 3:2. However, the models achieve slightly better scores on average. which is mainly due to less negative outliers.
 
