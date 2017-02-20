@@ -28,7 +28,7 @@ setwd("~/Google Drive/IE/Marketing Intelligence/IE_MI_IndividualProject_data")
 
 
 ```{r prepare & read the data, include=FALSE}
-IE_MI_training <- read_delim("~/Google Drive/IE/Marketing Intelligence/IE_MI_IndividualProject_data/IE_MI_training.txt",";", escape_double = FALSE, trim_ws = TRUE)
+IE_MI_training <- read_delim("IE_MI_training.txt",";", escape_double = FALSE, trim_ws = TRUE)
 IE_MI_training$prov <- as.integer(IE_MI_training$prov)
 df <- IE_MI_training %>% select(-uuid) 
 df <- ovun.sample(target~.,data=df,method="under", p=0.1)$data
@@ -142,7 +142,7 @@ logReg <- function(train,cv,test,seed=1){
   # The logistic regression over most of the features, and the training data set.
   model <- glm(target~., data=train, family = "binomial")
   #optimize the model with backwards stepwise feature selection
-  model <- step(model,direction="backward",trace=F,steps=10)  
+  #model <- step(model,direction="backward",trace=F,steps=10)  
   probs <- predict(model, type="response", newdata = cv)
   predictions <- data.frame(target=cv$target, pred=probs)
   threshold <- getThreshold(predictions)
@@ -211,7 +211,7 @@ create_model <- function(seed=1,applyRF=F,applySVM=F){
     li = logReg(trn,cv,tst,seed=seed)
     tbl = li$tbl
   }
-  print(tbl)
+  #print(tbl)
   #let's calculate the evaluation measures
   accuracy <- (tbl[1,1] + tbl[2,2]) / sum(tbl)
   F1 <- (2*(tbl[1,1]))/((2*(tbl[1,1]))+tbl[2,1]+tbl[1,2])
@@ -225,7 +225,7 @@ create_model <- function(seed=1,applyRF=F,applySVM=F){
 Now I iterated over the functions created before in order to obtain several models and their performance metrics for comparison.
 ```{r Iteration over the models, message = FALSE,warning=FALSE}
 df = read.csv2("filtered_data.csv") %>% select(-X)
-df <- df %>% select(one_of(c("Dim.1","Dim.2","os","PC3","PC4","PC5","PC6","PC7","target")))
+df <- df %>% select(one_of(c("Dim.1","Dim.2","os","PC1","PC3","PC4","PC5","PC6","PC7","target")))
 df$target <- as.factor(df$target)
 accuracy <- vector()
 f1_measure <- vector()
@@ -233,9 +233,9 @@ coefis <- list()
 optimalThreshold <- vector()
 auc = vector()
 
-sequence <- seq(1,10)
+sequence <- seq(1,100)
 for (i in sequence){
-  tmp = create_model(seed=i,applySVM=F,applyRF = T)
+  tmp = create_model(seed=i,applySVM=F,applyRF = F)
   accuracy[i] <- tmp[[1]]
   f1_measure[i] <- tmp[[2]]
   auc[i] <- tmp[[3]]
@@ -267,14 +267,14 @@ cat(paste("Highest Accuracy:", max(accuracy), ", Lowest Accuracy:", min(accuracy
 cat(paste("Highest F1:", max(f1_measure),", Lowest F1:", min(f1_measure),", Average F1:", mean(f1_measure)))
 cat(paste("Highest AUC:", max(auc), ", Lowest AUC:", min(auc),", Average AUC:", mean(auc)))
 cat(paste("Is the performance the highest for all three measures?:", which(accuracy == max(accuracy))==which(f1_measure == max(f1_measure))&which(auc == max(auc))==which(accuracy == max(accuracy))))
-cat(paste("The seed I should set to obtain the optimal model:", which(accuracy == max(accuracy))))
+cat(paste("The seed I should set to obtain the optimal model:", which(auc == max(auc))))
 
 #SVM seed = 1:10
 #Highest Accuracy: 0.86545561955398 , Lowest Accuracy: 0.18150937823069 , Average Accuracy: 0.653300841825432
 #Highest F1: 0.927102504601104 , Lowest F1: 0.202360391479562 , Average F1: 0.744306569550274
 #SVM seed = 11:20 is not better
 #Random Forest has much better AUC --> ~0.65
-# LogReg even better: --> ~0.68; also, very constant for all measures
+# LogReg even better: --> ~0.68; also, very constant for all measures --> best seed = 240 --> AUC = 0.7
 ```
 Interestingly, the obtained F1 scores and accuracies are very similar for the values optimized by the ROC and by the MCC. This might be due to a quite balanced dataset with proportions of 3:2. However, the models achieve slightly better scores on average. which is mainly due to less negative outliers.
 
@@ -291,40 +291,95 @@ new_data <- cbind(factors,pca_new,target)
 
 ```{r}
 df = read.csv2("filtered_data.csv") %>% select(-X)
+df <- df %>% select(one_of(c("Dim.1","Dim.2","os","PC3","PC4","PC5","PC6","PC7","target")))
 df$target <- as.factor(df$target)
 accuracy <- vector()
 f1_measure <- vector()
 coefis <- list()
 optimalThreshold <- vector()
-
-create_model <- function(seed=1,applyRF=F,applySVM=F){
+seed=1
+create_model <- function(seed=1){
   set.seed(seed)
   splits <- splitdf(dataframe=df, percentage = 0.8,seed = seed)
   trn = splits$trainset
   tst = splits$testset
-  best_model <- best.svm(target~., data = trn, gamma = 2^(-1:1), cost = 2^(2:4),probability=T)
+  best_model <- best.randomForest(target~., data = trn)
+  #Number of trees: 500 --> ntree = 500
+  #No. of variables tried at each split: 4 --> mtry = 4
 
-  probs <- predict(model, type="prob", newdata = cv,probability=T)  
-  predictions <- data.frame(target=cv$target, pred=attr(probs, "probabilities")[,2])
+  probs <- predict(best_model, type="prob", newdata = tst,probability=T)  
+  predictions <- data.frame(target=tst$target, pred=probs[,2])
   threshold <- getThreshold(predictions)
   #now we predict for our test set
-  probs <- predict(model, type="prob", newdata = test,probability=T)
-  predictions <- data.frame(target=test$target, pred=attr(probs, "probabilities")[,2])
   #diffusion Table
   tbl <- table(predictions$target, predictions$pred > threshold)
-  
-  print(table(cv$target))
-  print(table(tst$target))
   print(tbl)
   #let's calculate the evaluation measures
   accuracy <- (tbl[1,1] + tbl[2,2]) / sum(tbl)
   F1 <- (2*(tbl[1,1]))/((2*(tbl[1,1]))+tbl[2,1]+tbl[1,2])
-  return(list(accuracy,F1))
+  auc = auc(predictions$target, predictions$pred)
+  return(list(accuracy,F1,auc,threshold))
 }
+accuracy <- vector()
+f1_measure <- vector()
+coefis <- list()
+optimalThreshold <- vector()
+auc = vector()
 
-
+sequence <- seq(1,10)
+for (i in sequence){
+  tmp = create_model(seed=i)
+  accuracy[i] <- tmp[[1]]
+  f1_measure[i] <- tmp[[2]]
+  auc[i] <- tmp[[3]]
+  optimalThreshold[i] <- tmp[[4]]
+  print(i)
+}
 ```
 
+# MISSING: SCALING THE DATA!!
+# MISSING: APPLY KNN ON DATA AGAIN FOR AUC 
 
-
+```{r}
+library(foreach)  
+df = read.csv2("filtered_data.csv") %>% select(-X)
+df <- df %>% select(one_of(c("Dim.1","Dim.2","os","PC3","PC4","PC5","PC6","PC7","target")))
+df$target <- as.factor(df$target)
+splits <- splitdf(dataframe=df, percentage = 0.7,seed = seed)
+train = splits$trainset
+require(ROSE)
+train = ovun.sample(formula=target~.,data=train,method = "both",p=0.3)$data
+test = splits$testset
+accuracy <- vector()
+f1_measure <- vector()
+auc <- vector()
+bagging<-function(training,testing,length_divisor=5,iterations=1000,seed=1)
+{
+  set.seed(seed)
+  predictions<-foreach(m=1:iterations,.combine=cbind) %do% {
+    training_positions <- sample(nrow(training), size=floor((nrow(training)/length_divisor)))
+    train_pos<-1:nrow(training) %in% training_positions
+    logistic_regression<-glm(target~.,data=training[train_pos,], family = "binomial")
+    return(predict(logistic_regression,newdata=testing))
+  }
+  auc = apply(predictions,2,function(x){auc(testing$target,x)})
+  names = names(head(sort(auc,decreasing = T),20))
+  pred = predictions[,names]
+  return(rowMeans(pred))
+}
+sequence = seq(1:10)
+for (i in sequence){
+  probs = bagging(train,test,seed=i)
+  predictions <- data.frame(target=test$target, pred=probs)
+  threshold <- getThreshold(predictions)
+  auc[i] = auc(predictions$target, predictions$pred)
+  accuracy[i] <- mean(test$target==as.factor(if_else(probs>threshold,1,0)))
+  tbl = table(test$target,as.factor(if_else(probs>threshold,1,0)))
+  f1_measure[i] = (2*(tbl[1,1]))/((2*(tbl[1,1]))+tbl[2,1]+tbl[1,2])
+  optimalThreshold[i] = threshold
+  print(tbl)
+  print(i)
+}
+auc # always 0.680X --> choose the model that has highest accuracy at the same time
+```
 
