@@ -1,0 +1,259 @@
+---
+title: "R_Recap_02"
+author: "Felix Mueller"
+date: "2/27/2017"
+output: 
+  beamer_presentation:
+    fig_caption: false
+    fig_height: 3
+    fig_width: 4.5
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+# Prepare your R session
+<div class="blue">
+```{r Preparations, echo = T, warning =FALSE,message = F}
+setwd("~/Google_Drive/github/R/R_Recap/session_02")
+library(dplyr)
+library(ggplot2)
+```
+</div>
+## How to apply models in general
+<div class="blue">
+- Understanding the problem
+- Understanding the data
+- Preparing the data
+- Split in Train & Test
+- Predicting variable selection
+- Resampling
+- Model 
+- Tuning of the model
+- Evaluation
+</div>
+=> ITERATIVE PROCESS! 
+# Iris dataset {.smaller}
+<div class="blue">
+1. sepal length in cm 
+2. sepal width in cm 
+3. petal length in cm 
+4. petal width in cm 
+5. class: 
+-- Iris Setosa 
+-- Iris Versicolour 
+-- Iris Virginica
+</div>
+Source: https://archive.ics.uci.edu/ml/datasets/Iris
+
+# Loading the Iris dataset {.smaller}
+<div class="blue">
+```{r iris, echo = T, warning =FALSE,message = F}
+glimpse(iris)
+df = iris
+df[,-5] = scale(df[,-5])
+print(any(is.na(df)))
+```
+</div>
+
+# Function: Split data {.smaller}
+<div class="blue">
+```{r, echo = T, warning =FALSE,message = F}
+splitdf <- function(dataframe, seed=1, 
+                    percentage=0.8) {
+  if (!is.null(seed)) set.seed(seed)
+  index <- 1:nrow(dataframe)
+  numTrainingSamples <- round(length(index) 
+                              * percentage)
+  trainindex <- sample(index, 
+                       numTrainingSamples)
+  trainset <- dataframe[trainindex, ]
+  testset <- dataframe[-trainindex, ]
+  list(trainset=trainset,testset=testset)}
+```
+</div>
+
+# resampling the iris data {.smaller}
+<div class="blue">
+```{r resample, echo = T, warning =FALSE,message = F}
+df = df %>% filter(Species!= "setosa")
+levels(df$Species) = list("virginica"="virginica",
+      "versicolor"=c("versicolor","setosa"))
+split <- splitdf(df,seed=1)
+train <- split$trainset
+test <- split$testset
+library(ROSE)
+print(sum(train$Species == "versicolor"))
+train <- ovun.sample(Species~.,data=train,
+                     method="under",p=0.7)$data
+print(sum(train$Species == "versicolor"))
+```
+</div>
+
+#  Building and tuning a tree {.smaller}
+<div class="blue">
+```{r tree, echo = T, warning =FALSE,message = F}
+library(tree)
+set.seed(37)
+tree = tree(Species ~.,train)
+tree_cv = cv.tree(tree,method="misclass")
+print(tree_cv$size)
+print(tree_cv$dev)
+tree_pruned = prune.tree(tree,best=2)
+```
+</div>
+
+#  Test with final test set {.smaller}
+<div class="blue">
+```{r predict on test, echo = T, warning =FALSE,message = F}
+predictions = predict(tree,newdata=test)
+predictions = as.factor(if_else(
+  predictions[,2]>0.5,"virginica","versicolor"))
+print(table(predictions,test$Species))
+```
+</div>
+#  pruned prediction  {.smaller}
+<div class="blue">
+```{r predict on test pruned, echo = T, warning =FALSE,message = F}
+predictions_pr = predict(tree_pruned,newdata=test)
+predictions_pr = as.factor(
+  if_else(predictions_pr[,2]>0.5,
+          "virginica","versicolor"))
+print(table(predictions_pr,test$Species))
+```
+</div>
+
+#  Marketing Intelligence  {.smaller}
+<div class="blue">
+
+```{r, echo=F, warning =FALSE,message = F}
+library(readr)
+df <- read_delim("~/Google_Drive/IE/Marketing_Intelligence/IE_MI_IndividualProject_data/IE_MI_training.txt",";", escape_double = FALSE, trim_ws = TRUE) %>% dplyr::select(-uuid) 
+```
+
+```{r read marketing data, echo = T, warning =FALSE,message = F}
+#not in validation set --> exclude
+df = df %>% dplyr::select(-iab_4)
+names <- c('device','os','os_version','browser'
+           ,'browser_version','prov','day','target')
+df[,names] <- lapply(df[,names], factor)
+```
+</div>
+# Filtering {.smaller}
+<div class="blue">
+```{r Filtering marketing, echo = T, warning =FALSE,message = F}
+cols = sapply(df,
+              function(x){is.integer(x)|is.numeric(x)})
+cor_matrix = cor(df[,cols],as.numeric(df$target)
+                 ,method="spearman")
+#REALLY low threshold!
+names_num <- rownames(subset(cor_matrix
+                             ,abs(cor_matrix) >= 0.01))
+df <- df %>% dplyr::select(one_of(names_num,names))
+#Random Forest cannot handly NAs
+df$prov <- NULL
+```
+</div>
+#  Resample {.smaller}
+<div class="blue">
+```{r resample marketing, echo = T, warning =FALSE,message = F}
+splits = splitdf(df,percentage=0.9)
+test = splits$testset
+train = splits$trainset
+train <- ovun.sample(formula=target~.,data=train
+                     ,method="under", p=0.5)$data
+rm(df)
+rm(splits)
+```
+</div>
+
+# Random forest {.smaller}
+<div class="blue">
+```{r, echo = T, warning =FALSE,message = F}
+library(randomForest)
+model <- randomForest(target~., data=train, 
+                      importance=TRUE)
+probs <- predict(model, type="prob", newdata = test)  
+predictions <- data.frame(target=test$target
+                          , pred=probs[,2])
+```
+</div>
+
+# Threshold detection {.smaller}
+<div class="blue">
+```{r Threshold function, echo = T, warning =FALSE,message = F}
+library(pROC)
+getThreshold <- function(predictions){
+  myROC <- roc(formula = target ~ pred, predictions)
+  optimalThreshold <- coords(myROC, "best"
+                             , ret = "threshold")
+}
+threshold <- getThreshold(predictions)
+tbl = table(predictions$target, 
+            predictions$pred > threshold)
+```
+</div>
+
+# Compare results {.smaller}
+<div class="blue">
+```{r Compare results, echo = T, warning =FALSE,message = F}
+print(tbl)
+auc = auc(predictions$target, predictions$pred)
+accuracy <- (tbl[1,1] + tbl[2,2]) / sum(tbl)
+F1 <- (2*(tbl[1,1]))/((2*(tbl[1,1]))+tbl[2,1]+tbl[1,2])
+print(cat("Accuracy:",accuracy,"F1:",F1,"AUC:",auc,""))
+```
+</div>
+
+# Variable importance {.smaller}
+<div class="blue">
+```{r variable importance, echo = T, warning =FALSE,message = F}
+#high values wanted
+print(head(importance(model)[,3:4]))
+```
+</div>
+
+# VarImpPlot {.smaller}
+```{r varImpPlot}
+varImpPlot(model,n.var=5)
+```
+
+# K-Fold CV {.smaller}
+<div class="blue">
+```{r k-fold CV, echo = T, warning =FALSE,message = F}
+set.seed(1)
+folds <- sample(rep(1:10,length=nrow(train)))
+cv_error <- vector()
+sequence = seq(1,10)
+for(k in sequence){
+  model <- randomForest(target~.,data=train[folds!=k,])
+  pred <- predict(model,train[folds==k,],type="class")
+  cv_error[k] <- mean(train[folds==k,]$target==pred) 
+}
+```
+</div>
+
+# ggplot2 {.smaller}
+<div class="blue">
+```{r ggplot2, echo = T, warning =FALSE,message = F}
+q1 = qplot(y=cv_error,x=sequence,xlab="Iteration",
+      ylab="CV Error",main="CV Error per iteration")+
+  geom_line(colour=I("blue"))+
+  geom_point(aes(x = which(cv_error==min(cv_error)), 
+                 y = min(cv_error)), color = I("red"))+
+  geom_hline(aes(yintercept=max(cv_error)),
+             color = I("red"),linetype = 2)
+```
+</div>
+
+# ggplot2 output {.smaller}
+```{r}
+print(q1)
+```
+
+
+# Other ideas to play with
+<div class="blue">
+1. mtry (default = sqrt(p)): number of variables per tree  
+2. ntree: number of trees 
+</div>
