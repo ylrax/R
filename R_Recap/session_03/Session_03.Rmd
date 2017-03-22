@@ -28,6 +28,8 @@ rm(list = c("internal_training_values","internal_training_labels"))
 df$date_recorded = as.Date(df$date_recorded)
 
 critics <- read_csv("/Users/Felix/Google_Drive/IE/Recommendation Engines/homework/IE-Lab1-Package-O1/Data/critics.csv")
+
+url <- 'https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-white.csv'
 ```
 
 # Topics of today
@@ -294,7 +296,6 @@ Output variable (based on sensory data):
 # How to download the wine dataset
 
 ```{r, echo = T, warning =FALSE,message = F}
-url <- 'https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-white.csv'
 wine <- read.csv2(url)
 glimpse(wine)
 ```
