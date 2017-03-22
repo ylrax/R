@@ -270,6 +270,35 @@ ggplot(data=mtcars,aes(x=mpg))+
   stat_function(fun=dnorm,args=list(mean=mean(mtcars$mpg),
   sd=sd(mtcars$mpg)),colour=I("red"),size=1.5)
 ```
+
+# Your turn: model with the wine dataset
+Input variables (based on physicochemical tests): 
+<div class="blue">
+- fixed acidity 
+- volatile acidity 
+- citric acid 
+- residual sugar 
+- chlorides 
+- free sulfur dioxide 
+- total sulfur dioxide 
+- density 
+- pH 
+- sulphates 
+- alcohol 
+</div>
+Output variable (based on sensory data): 
+<div class="blue">
+- quality (score between 0 and 10)
+</div>
+
+# How to download the wine dataset
+
+```{r, echo = T, warning =FALSE,message = F}
+url <- 'https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-white.csv'
+wine <- read.csv2(url)
+glimpse(wine)
+```
+
 # kNN
 Calculates the distance between data instances.
 
